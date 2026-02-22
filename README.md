@@ -181,7 +181,6 @@ make clean
 
 - Word buffer is fixed at `char word[20]` — words longer than 19 characters will be silently truncated.
 - File name buffer is fixed at `char file_name[20]` — filenames longer than 19 characters will cause a buffer overflow.
-- No punctuation stripping — `"hello,"` and `"hello"` are treated as different tokens.
 - The `compare()` function in `validation.c` contains a structural bug (see [CHANGELOG.md](CHANGELOG.md)) that was identified and documented; the duplicate detection is handled correctly via `insert_at_last`.
 
 ---
