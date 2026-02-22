@@ -2,42 +2,49 @@
 
 void display_database(hash_T *arr)
 {
-    // 1. Top Border
-    printf("-----------------------------------------------------------------------\n");
-    printf("| %-5s | %-15s | %-10s | %-15s | %-10s |\n", "Index", "Word", "File Count", "File Name", "Word Count");
-    printf("-----------------------------------------------------------------------\n");
+    // Top Border
+    printf(H_CYAN "+------------+-----------------+------------+------------+------------------------------------------+\n" RESET);
 
-    for(int i = 0; i < 27; i++)
+    // Header Row - Macros must be placed directly inside or adjacent to string literals
+    printf(H_CYAN "|" RESET BG_BLUE BOLD_WHITE " %-10s " RESET 
+           H_CYAN "|" RESET BG_BLUE BOLD_WHITE " %-15s " RESET 
+           H_CYAN "|" RESET BG_BLUE BOLD_WHITE " %-10s " RESET 
+           H_CYAN "|" RESET BG_BLUE BOLD_WHITE " %-10s " RESET 
+           H_CYAN "|" RESET BG_BLUE BOLD_WHITE " %-40s " RESET 
+           H_CYAN "|\n" RESET, 
+           "Index", "Word", "FileCount", "WordCount", "Filenames");
+
+    // Header-Separator
+    printf(H_CYAN "+------------+-----------------+------------+------------+------------------------------------------+\n" RESET);
+
+    for (int i = 0; i < 27; i++)
     {
         mNode *mTemp = arr[i].link;
-        
-        while(mTemp)
+        while (mTemp)
         {
+            char all_files[1024] = ""; 
+            u_int total_word_count = 0;
             sNode *sTemp = mTemp->sLink;
-            int first_file = 1;
 
-            while(sTemp)
+            while (sTemp)
             {
-                if(first_file)
-                {
-                    // Print full row for the first file occurrence of a word
-                    printf("| %-5d | %-15s | %-10u | %-15s | %-10u |\n", 
-                            i, mTemp->word, mTemp->filecount, sTemp->file_name, sTemp->wordcount);
-                }
-                else
-                {
-                    // Print only sub-node info, leave word info blank for clarity
-                    printf("| %-5s | %-15s | %-10s | %-15s | %-10u |\n", 
-                            "", "", "", sTemp->file_name, sTemp->wordcount);
-                }
-                
+                total_word_count += sTemp->wordcount;
+                strcat(all_files, sTemp->file_name);
+                if (sTemp->subLink) strcat(all_files, ", ");
                 sTemp = sTemp->subLink;
-                first_file = 0;
             }
-            
-            // 2. Draw a line after each Word (mNode) group
-            printf("-----------------------------------------------------------------------\n");
+
+            // Data Row
+            printf(H_CYAN "|" RESET " " H_YELLOW "%-10d" RESET 
+                   H_CYAN " |" RESET " " H_GREEN "%-15s" RESET 
+                   H_CYAN " |" RESET " %-10u " 
+                   H_CYAN "|" RESET " %-10u " 
+                   H_CYAN "|" RESET " " H_MAGENTA "%-40s" RESET 
+                   H_CYAN "|\n" RESET, 
+                   i, mTemp->word, mTemp->filecount, total_word_count, all_files);
+
             mTemp = mTemp->mLink;
         }
     }
+    printf(H_CYAN "+------------+-----------------+------------+------------+------------------------------------------+\n" RESET);
 }

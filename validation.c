@@ -1,67 +1,96 @@
+/**
+ * @file   validation.c
+ * @brief  File validation and duplicate detection for the Flist.
+ *
+ * BUG FIX (v1.1): compare() contained a logic error — the inner while loop
+ * advanced temp1 but the strcmp always used temp->file_name instead of
+ * temp1->file_name. This meant the last node in the list was never checked,
+ * allowing duplicates to be inserted at the tail. Fixed by flattening the
+ * traversal to a single loop comparing each node against fname.
+ */
+
 #include "main.h"
 
-
+/**
+ * @brief  Validates a filename and, if valid, appends it to the Flist.
+ *
+ * Checks (in order):
+ *   1. The file has a ".txt" extension.
+ *   2. The file can be opened (exists and is accessible).
+ *   3. The file is not empty.
+ *   4. The filename is not already in the Flist (duplicate check).
+ *
+ * @param  argv  Argument vector (or any string array).
+ * @param  i     Index into argv for the filename to validate.
+ * @param  head  Pointer-to-pointer to the Flist head.
+ * @return SUCCESS if the file passes all checks and was inserted,
+ *         FAILURE otherwise (reason is printed to stdout).
+ */
 Status read_and_validation(char *argv[], int i, Flist **head)
 {
     FILE *fp;
-    //check argv[i] is .txt extension or not
+
+    /* Check for .txt extension */
     if(strstr(argv[i], ".txt") != NULL)
     {
-        //check if the file is present or not
+        /* Check the file can be opened */
         fp = fopen(argv[i], "r");
         if(fp == NULL)
-        {
-            printf("[Info] : %s Could Not Open / Not Found\n", argv[i]);
             return FAILURE;
-        }
-        printf("[Info] : %s File Opened Successfully\n", argv[i]);
 
-        //Check the file is empty or not
+        /* Check the file is not empty */
         fseek(fp, 0, SEEK_END);
         if(ftell(fp) == 0)
         {
-            printf("%s file is empty\n", argv[i]);
+            printf(H_RED "%s file is empty\n" RESET, argv[i]);
+            fclose(fp);
             return FAILURE;
         }
-        printf("[Info] : File is Not Empty, Adding Operationg Started...\n");
 
+        fclose(fp);
+
+        /* Attempt insertion — insert_at_last handles duplicate detection */
         if(insert_at_last(head, argv[i]) == FAILURE)
         {
-            printf("[Info] : %s's Duplicate Found\n", argv[i]);
+            printf(H_YELLOW "[Info] : %s's Duplicate Found\n" RESET, argv[i]);
             return FAILURE;
         }
-
-        printf("[Info] : %s File Successfully Added\n", argv[i]);
     }
     else
     {
-        printf("[Info] : %s is not a .txt file\n", argv[i]);
+        printf(H_RED "[Info] : %s is not a .txt file\n" RESET, argv[i]);
         return FAILURE;
     }
 
-    fclose(fp);
     return SUCCESS;
 }
 
+/**
+ * @brief  Checks whether a filename already exists in the Flist.
+ *
+ * BUG FIX: The original implementation used a nested loop where the inner
+ * pointer (temp1) was advanced but never used in the comparison — strcmp
+ * always compared against the outer pointer (temp). This meant the final
+ * node was never checked. Fixed to a single flat traversal.
+ *
+ * @param  head   Head of the Flist.
+ * @param  fname  Filename to check.
+ * @return DUPLICATE if fname is already in the list,
+ *         LIST_EMPTY if the list is NULL,
+ *         SUCCESS if fname is not found (no duplicate).
+ */
 Status compare(Flist *head, char *fname)
 {
-    //If list is empty
     if(head == NULL)
         return LIST_EMPTY;
-    
+
     Flist *temp = head;
-    //Compare the list one by one
     while(temp)
     {
-        Flist *temp1 = temp->link;
-        while(temp1)
-        {
-            if(strcmp(temp->file_name, fname) == 0)
-                return DUPLICATE;
-            temp1 = temp1->link;
-        }
+        if(strcmp(temp->file_name, fname) == 0)
+            return DUPLICATE;
         temp = temp->link;
     }
-    
+
     return SUCCESS;
 }

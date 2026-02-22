@@ -1,57 +1,70 @@
+/**
+ * @file   create_database.c
+ * @brief  Builds the inverted index by reading each file word-by-word.
+ *
+ * For every word read from a file, this module:
+ *   1. Computes the hash bucket index from the first character.
+ *   2. Searches the bucket's mNode chain for an existing entry.
+ *   3. If found, increments the word count for the current file
+ *      (or creates a new sNode if this is a new file for that word).
+ *   4. If not found, creates a new mNode + sNode pair.
+ *
+ * BUG FIX (v1.1): The outer while(mTemp) loop was missing a `break` after
+ * a word match was found and handled. This caused an infinite loop whenever
+ * a word appeared more than once in the same file.
+ */
+
 #include "main.h"
 
-//Implementation of Database
+/**
+ * @brief  Reads all files in the Flist and indexes their words into the hash table.
+ *
+ * @param  arr   The 27-bucket hash table.
+ * @param  head  Head of the Flist (files to index).
+ * @return SUCCESS on completion, FAILURE if a file cannot be opened or malloc fails.
+ */
 Status create_database(hash_T *arr, Flist *head)
 {
     Flist *temp = head;
-    FILE *fp;
+    FILE  *fp;
 
+    /* ── Iterate over each file in the linked list ── */
     while(temp)
     {
-        //Open the File One By One
         fp = fopen(temp->file_name, "r");
-        char input_word[20];
-
         if(fp == NULL)
         {
-            printf("[Error] : File Could Not Open\n");
+            printf(H_RED "[Error] : File Could Not Open\n" RESET);
             return FAILURE;
         }
-        printf("[Info] : %s Opened Successfully\n", temp->file_name);
+        printf(BOLD_GREEN "[Info] : %s Opened Successfully\n" RESET, temp->file_name);
 
-        //Read word by word from the file
+        char input_word[20];
+
+        /* ── Read the file one word at a time ── */
         while(fscanf(fp, "%s", input_word) != EOF)
         {
-            //Find the index
+            /* Compute bucket index from the first character */
             int index;
-            //If Lower Case
-            if(islower(input_word[0]))
-                index = input_word[0] - 97;
-            //If Upper Case
-            else if(isupper(input_word[0]))
-                index = input_word[0] - 65;
-            //If Non Alphabets Character
-            else
-            {
-                index = 26;
-            }
 
-            //Check if the index link is null or not
+            strip_punctuation(input_word);
+            
+            if(islower(input_word[0]))
+                index = input_word[0] - 'a';        /* a=0, b=1, ..., z=25 */
+            else if(isupper(input_word[0]))
+                index = input_word[0] - 'A';        /* A=0, B=1, ..., Z=25 */
+            else
+                index = 26;                          /* Non-alphabetic token */
+
+            /* ── Bucket is empty: create the first mNode + sNode ── */
             if(arr[index].link == NULL)
             {
-                //Create MainNode
                 mNode *new_mainNode = malloc(sizeof(mNode));
-                if(new_mainNode == NULL)
-                    return FAILURE;     //Safety Check
-                //Create SubNode
+                if(new_mainNode == NULL) return FAILURE;
+
                 sNode *new_subNode = malloc(sizeof(sNode));
-                if(new_subNode == NULL)
-                {
-                    free(new_mainNode);
-                    return FAILURE;     //Safety Check
-                }     //Safety Check
-                
-                //Update The nodes and counts
+                if(new_subNode == NULL) { free(new_mainNode); return FAILURE; }
+
                 new_mainNode->filecount = 1;
                 strcpy(new_mainNode->word, input_word);
                 new_mainNode->sLink = new_subNode;
@@ -59,53 +72,50 @@ Status create_database(hash_T *arr, Flist *head)
 
                 strcpy(new_subNode->file_name, temp->file_name);
                 new_subNode->wordcount = 1;
-                new_subNode->subLink = NULL;
+                new_subNode->subLink   = NULL;
 
-                arr[index].link = new_mainNode; 
+                arr[index].link = new_mainNode;
             }
             else
             {
-                //Take two pointers to traverse
-                mNode *mTemp = arr[index].link, *mPrev= NULL;
+                /* ── Bucket has entries: search the mNode chain ── */
+                mNode *mTemp = arr[index].link, *mPrev = NULL;
+
                 while(mTemp)
                 {
-                    //If word is already present in the table
+                    /* ── Word already exists in the index ── */
                     if(strcmp(mTemp->word, input_word) == 0)
                     {
-                        //If it is in same file;
-                        //Take Two Pointers to Traverse
+                        /* Search for a sub-node matching the current file */
                         sNode *sTemp = mTemp->sLink, *sPrev = NULL;
                         while(sTemp)
                         {
                             if(strcmp(sTemp->file_name, temp->file_name) == 0)
                             {
+                                /* Same file → just increment the count */
                                 (sTemp->wordcount)++;
                                 break;
                             }
-                            else
-                            {
-                                sPrev = sTemp;
-                                sTemp = sTemp->subLink;
-                            }
+                            sPrev = sTemp;
+                            sTemp = sTemp->subLink;
                         }
 
-                        //If it is in the different File
+                        /* Word is in a new file → add a new sNode */
                         if(sTemp == NULL)
                         {
                             sNode *new_subNode = malloc(sizeof(sNode));
-                            if(new_subNode == NULL)
-                                return FAILURE;      //Safety Check
-                        
-                             //Update the Nodes
+                            if(new_subNode == NULL) return FAILURE;
+
                             new_subNode->wordcount = 1;
                             strcpy(new_subNode->file_name, temp->file_name);
                             new_subNode->subLink = NULL;
 
                             sPrev->subLink = new_subNode;
                             (mTemp->filecount)++;
-
-                            break;
                         }
+
+                        /* FIX: break the outer loop — word is handled */
+                        break;
                     }
                     else
                     {
@@ -114,38 +124,30 @@ Status create_database(hash_T *arr, Flist *head)
                     }
                 }
 
+                /* ── Word not found in bucket: create a new mNode + sNode ── */
                 if(mTemp == NULL)
                 {
-                    //If word is different
-                    // Create Mainnode
                     mNode *new_mainNode = malloc(sizeof(mNode));
-                    if(new_mainNode == NULL)
-                        return FAILURE;     //Safety Check
-                    //Create SubNode
+                    if(new_mainNode == NULL) return FAILURE;
+
                     sNode *new_subNode = malloc(sizeof(sNode));
-                    if(new_subNode == NULL)
-                    {
-                        free(new_mainNode);
-                        return FAILURE;     //Safety Check
-                    }
-                
-                    //Update the Nodes and Counts
-                    (new_mainNode->filecount) = 1;
+                    if(new_subNode == NULL) { free(new_mainNode); return FAILURE; }
+
+                    new_mainNode->filecount = 1;
                     strcpy(new_mainNode->word, input_word);
                     new_mainNode->sLink = new_subNode;
                     new_mainNode->mLink = NULL;
 
                     strcpy(new_subNode->file_name, temp->file_name);
-                    (new_subNode->wordcount) = 1;
-                    new_subNode->subLink = NULL;
+                    new_subNode->wordcount = 1;
+                    new_subNode->subLink   = NULL;
 
                     mPrev->mLink = new_mainNode;
                 }
-
             }
-
         }
-        //Move the node to the next node
+
+        fclose(fp);
         temp = temp->link;
     }
 
