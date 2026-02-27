@@ -1,6 +1,6 @@
 # 📋 CHANGELOG — Inverted Search Engine
 
-> A full record of every bug identified, its root cause, the original problematic code, and the fix applied. Claude (AI) was used as a reviewing and documentation assistant during this phase of the project.
+> A full record of every bug identified, its root cause, the original problematic code, and the fix applied. Claude (AI) was used as a reviewing and documentation assistant throughout this project.
 
 ---
 
@@ -11,17 +11,20 @@
 | `v1.0` | Initial implementation — core data structures, hash table, and menu loop |
 | `v1.1` | Bug fixes across four critical areas (documented below) |
 | `v1.2` | Incremental update architecture introduced |
+| `v1.3` | Performance optimizations — sorted chains, single-pass insert, snprintf |
+| `v1.4` | Dynamic string allocation, segfault fix, punctuation stripping, prefix search, input validation, automated test target |
 
 ---
 
 ## 🐛 Bug #1 — Infinite Loop in `create_database.c`
 
 **File:** `create_database.c`  
-**Severity:** Critical — causes the program to hang on any word that appears more than once in the same file.
+**Version Fixed:** v1.1  
+**Severity:** 🔴 Critical — causes the program to hang on any word that appears more than once in the same file.
 
 ### Root Cause
 
-When a word was already present in the hash table **and** a sub-node for the current file already existed, the code correctly incremented `sTemp->wordcount` and called `break` — but this only broke the **inner** `while(sTemp)` loop. The **outer** `while(mTemp)` loop had no corresponding `break`, so after finding the word and updating its count, the loop would continue iterating over other main nodes indefinitely (or until `mTemp` became NULL by accident).
+When a word was already present in the hash table **and** a sub-node for the current file already existed, the code correctly incremented `sTemp->wordcount` and called `break` — but this only broke the **inner** `while(sTemp)` loop. The **outer** `while(mTemp)` loop had no corresponding `break`, so after finding and updating the word, the loop would continue iterating indefinitely.
 
 ### Before (Broken)
 
@@ -36,12 +39,11 @@ while(mTemp)
             if(strcmp(sTemp->file_name, temp->file_name) == 0)
             {
                 (sTemp->wordcount)++;
-                break;          // ✅ breaks inner loop correctly
-                                // ❌ outer loop still continues!
+                break;      // ✅ breaks inner loop
+                            // ❌ outer loop still continues!
             }
-            // ...
         }
-        // ← No break here. Outer loop keeps running.
+        // ← No break here. Outer loop keeps running forever.
     }
     else
     {
@@ -53,37 +55,13 @@ while(mTemp)
 
 ### After (Fixed)
 
-The outer `if` block that handles a found word now contains its own `break` at the end, ensuring the outer loop exits after a match is found and processed:
-
 ```c
 while(mTemp)
 {
     if(strcmp(mTemp->word, input_word) == 0)
     {
-        sNode *sTemp = mTemp->sLink, *sPrev = NULL;
-        while(sTemp)
-        {
-            if(strcmp(sTemp->file_name, temp->file_name) == 0)
-            {
-                (sTemp->wordcount)++;
-                break;
-            }
-            else
-            {
-                sPrev = sTemp;
-                sTemp = sTemp->subLink;
-            }
-        }
-
-        if(sTemp == NULL) // word is in a new file
-        {
-            sNode *new_subNode = malloc(sizeof(sNode));
-            // ... setup new_subNode ...
-            sPrev->subLink = new_subNode;
-            (mTemp->filecount)++;
-        }
-
-        break;  // ✅ Now correctly exits the outer loop too
+        // ... handle word ...
+        break;  // ✅ correctly exits the outer loop too
     }
     else
     {
@@ -97,172 +75,313 @@ while(mTemp)
 
 ## 🐛 Bug #2 — Pass-by-Value & Stack `free()` in `update_database.c`
 
-**File:** `update_database.c`  
-**Severity:** Critical — causes silent data loss and undefined behavior (crash).
+**File:** `update_database.c`, `main.c`  
+**Version Fixed:** v1.1  
+**Severity:** 🔴 Critical — causes silent data loss and a crash on exit.
 
 ### Root Cause (Part A) — Pass by Value
 
-The original `update_database` function received `Flist *head` (a copy of the pointer), not `Flist **head`. Any new nodes added to the linked list inside the function were lost the moment the function returned, because the caller's `head` pointer was never updated.
+`update_database` received `Flist *head` (a copy). New nodes added inside the function were lost the moment it returned because the caller's pointer was never updated.
 
 ### Root Cause (Part B) — Freeing a Stack Array
 
-After collecting file names from the user into a VLA (`char *fileHolder[fileCount]`), the original code attempted to call `free(fileHolder)`. Since `fileHolder` is stack-allocated, calling `free()` on it is undefined behavior and would typically cause an immediate crash or heap corruption.
+After collecting filenames into a VLA (`char *fileHolder[fileCount]`), the original code called `free(fileHolder)`. A VLA is stack-allocated — calling `free()` on it is undefined behavior and causes a crash.
 
 ### Before (Broken)
 
 ```c
-// In main.c (caller):
-update_database(hash_t, head, fileHolder, fileCount);
-//                      ^^^^ — passing by value, changes are lost
-
-// In update_database.c (old signature):
-Status update_database(hash_T *arr, Flist *head, char *fileHolder[], u_int fileCount)
-//                                  ^^^^^^^^^^^ — copy, not pointer-to-pointer
-
-// After the function (old main.c):
-for(int i = 0; i < fileCount; i++)
-    free(fileHolder[i]);  // ✅ correct — these were strdup'd
-free(fileHolder);         // ❌ CRASH — fileHolder is a stack VLA
+update_database(hash_t, head, fileHolder, fileCount);  // ❌ by value
+free(fileHolder);                                       // ❌ stack memory
 ```
 
 ### After (Fixed)
 
-The function signature was updated to accept `Flist **head`, and the stack array is no longer `free()`'d (only the individual `strdup`'d strings are freed):
-
 ```c
-// Correct signature:
-Status update_database(hash_T *arr, Flist **head, char **fileHolder, u_int fileCount)
+update_database(hash_t, &head, fileHolder, fileCount); // ✅ by pointer
 
-// Caller passes address of head:
-update_database(hash_t, &head, fileHolder, fileCount);
-
-// Only free the strdup'd strings, not the stack array:
 for(int i = 0; i < fileCount; i++)
-    free(fileHolder[i]);
-// No free(fileHolder) — it lives on the stack
+    free(fileHolder[i]);   // ✅ only free the strdup'd strings
+// fileHolder itself lives on the stack — no free needed
 ```
 
 ---
 
-## 🐛 Bug #3 — Duplicate File Detection Logic in `validation.c`
+## 🐛 Bug #3 — Duplicate File Detection in `validation.c`
 
 **File:** `validation.c`  
-**Severity:** High — allows the same file to be indexed multiple times, inflating word counts.
+**Version Fixed:** v1.1  
+**Severity:** 🟠 High — allows the same file to be indexed multiple times, inflating all word counts.
 
 ### Root Cause
 
-The `compare()` function was supposed to detect if a filename was already in the list. However, the comparison logic was placed inside a **nested** loop where `temp1` (the inner pointer) was advanced but never actually used in the comparison — the check `strcmp(temp->file_name, fname)` only compared against the **outer** `temp` pointer. This meant that if the duplicate was the very last node in the list, it would never be caught.
+`compare()` used a nested loop where the inner pointer `temp1` was advanced but the `strcmp` always compared against the outer pointer `temp`. The last node was never checked, allowing it to be inserted as a duplicate.
 
-Additionally, `compare()` was architecturally redundant since `insert_at_last()` already calls `compare()` before inserting. The logic was consolidated so that duplicate detection is cleanly handled in one place.
-
-### Before (Broken Logic in `compare()`)
+### Before (Broken)
 
 ```c
-Status compare(Flist *head, char *fname)
+while(temp)
 {
-    Flist *temp = head;
-    while(temp)
+    Flist *temp1 = temp->link;
+    while(temp1)
     {
-        Flist *temp1 = temp->link;  // temp1 is declared...
-        while(temp1)
-        {
-            if(strcmp(temp->file_name, fname) == 0)  // ❌ uses temp, not temp1
-                return DUPLICATE;
-            temp1 = temp1->link;  // ...but the comparison never uses it
-        }
-        temp = temp->link;
+        if(strcmp(temp->file_name, fname) == 0)  // ❌ always checks temp, not temp1
+            return DUPLICATE;
+        temp1 = temp1->link;
     }
-    return SUCCESS;
+    temp = temp->link;
 }
 ```
 
-Because the inner loop compares `temp->file_name` (not `temp1->file_name`), the last node in the list is checked zero times — the inner `while(temp1)` loop exits immediately when `temp1 = temp->link = NULL` (last node), so the comparison is never reached for the last element.
-
 ### After (Fixed)
 
-The `compare()` function is corrected to iterate over all nodes and compare each against `fname`:
-
 ```c
-Status compare(Flist *head, char *fname)
+while(temp)
 {
-    if(head == NULL)
-        return LIST_EMPTY;
-
-    Flist *temp = head;
-    while(temp)
-    {
-        if(strcmp(temp->file_name, fname) == 0)
-            return DUPLICATE;
-        temp = temp->link;
-    }
-    return SUCCESS;
+    if(strcmp(temp->file_name, fname) == 0)  // ✅ checks every node including the last
+        return DUPLICATE;
+    temp = temp->link;
 }
 ```
 
 ---
 
-## 🐛 Bug #4 — Inefficient Full Re-index in `update_database.c`
+## 🐛 Bug #4 — Full Re-index on Every Update in `update_database.c`
 
 **File:** `update_database.c`  
-**Severity:** Medium — major performance regression on large datasets; functionally incorrect when the hash table is cleared and rebuilt.
+**Version Fixed:** v1.2  
+**Severity:** 🟡 Medium — O(all files) cost on every update instead of O(new files only).
 
 ### Root Cause
 
-The original update mechanism worked by:
-1. Clearing the entire hash table (`free_hash_table` + `initialize_hashTable`)
-2. Adding new files to the `Flist`
-3. Calling `create_database` on **all files** in the list from the beginning
-
-This meant that every update re-processed all previously indexed files. On a large database, this compounds linearly. It also introduced the risk that if `read_and_validation` failed for a previously valid file (e.g., file moved or deleted), data would be permanently lost.
+The original update wiped the entire hash table and re-read every file from scratch on every update call.
 
 ### Before (Inefficient)
 
 ```c
-// Old update_database pseudocode:
-free_hash_table(arr);           // wipe everything
-initialize_hashTable(arr);      // start from scratch
-// add new files to list
-create_database(arr, *head);    // re-index ALL files
+free_hash_table(arr);
+initialize_hashTable(arr);
+create_database(arr, *head);    // re-indexes ALL files every time
 ```
 
-### After (Incremental Update)
-
-The new implementation:
-1. Records a pointer to the **last existing node** in the list before adding new files
-2. Adds new files to the list
-3. Calls `create_database` starting from **the node after the old tail** — only new files are processed
+### After (Incremental)
 
 ```c
-// Save the current tail before adding anything
+// Record where the existing list ends
 Flist *lastNode = *head;
-if (lastNode != NULL)
-    while (lastNode->link != NULL)
-        lastNode = lastNode->link;
+while (lastNode->link != NULL) lastNode = lastNode->link;
 
-// Add new files to the list
-// ...
+// ... add new files ...
 
 // Index only from the new entries onward
 Flist *startNode = (lastNode == NULL) ? *head : lastNode->link;
-if (startNode != NULL)
-    create_database(arr, startNode);
+create_database(arr, startNode);
 ```
 
-This reduces re-indexing time from O(total words across all files) to O(words in new files only).
+---
+
+## ⚡ Optimization #1 — Sorted mNode Chain in `create_database.c`
+
+**Version:** v1.3  
+**Impact:** Reduces average chain traversal from O(C) to O(C/2) with early-exit on miss.
+
+mNode chains are now kept in alphabetical order. Traversal stops as soon as `mTemp->word > input_word`, meaning a miss is detected without scanning to NULL.
+
+```c
+// Before: always scanned to NULL even if word couldn't possibly be there
+while(mTemp) { ... mTemp = mTemp->mLink; }
+
+// After: stop early when we've passed the insertion point
+while(mTemp)
+{
+    cmp = strcmp(mTemp->word, input_word);
+    if(cmp >= 0) break;   // found match (==0) or passed it (>0)
+    mPrev = mTemp;
+    mTemp = mTemp->mLink;
+}
+```
+
+---
+
+## ⚡ Optimization #2 — Single-Pass `insert_at_last` in `flist_utils.c`
+
+**Version:** v1.3  
+**Impact:** Halves Flist traversal cost on every file insertion.
+
+The old code called `compare()` (one full pass), then traversed to the tail again (a second full pass). Both are now done in a single loop.
+
+```c
+// Before: two O(F) traversals
+if(compare(*head, fname) == DUPLICATE) ...  // pass 1
+while(temp->link) temp = temp->link;        // pass 2
+
+// After: one O(F) traversal — duplicate check and tail find combined
+while(temp->link)
+{
+    if(strcmp(temp->file_name, fname) == 0) { free(new); return FAILURE; }
+    temp = temp->link;
+}
+```
+
+---
+
+## ⚡ Optimization #3 — `snprintf` with Running Offset in `display_database.c` / `save_database.c`
+
+**Version:** v1.3  
+**Impact:** Filename string building drops from O(n²) to O(n).
+
+`strcat` scans to the end of the destination string on every call — O(n) per call, O(n²) total when called in a loop. Replaced with `snprintf` + a running position pointer.
+
+```c
+// Before: O(n²)
+strcat(all_files, sTemp->file_name);
+
+// After: O(1) per write
+pos += snprintf(all_files + pos, sizeof(all_files) - pos, "%s", sTemp->file_name);
+```
+
+---
+
+## 🐛 Bug #5 — Segfault on Exit in `hash_t_utils.c`
+
+**File:** `hash_t_utils.c`, `main.h`, `create_database.c`, `flist_utils.c`  
+**Version Fixed:** v1.4  
+**Severity:** 🔴 Critical — program crashes on exit when `free_hash_table` is called.
+
+### Root Cause
+
+The structs `mNode`, `sNode`, and `Flist` originally stored strings in fixed `char[]` arrays (stack memory inside the struct). The code in `hash_t_utils.c` called `free(mPrev->word)` on these, which is undefined behavior — you cannot `free()` memory that was not heap-allocated. This caused an immediate segfault on exit.
+
+### Fix — Dynamic String Allocation (v1.4)
+
+All string fields were changed from fixed arrays to heap-allocated pointers via `strdup`. Every creation point uses `strdup`; every free point now correctly frees the string before freeing the node.
+
+```c
+// Before — fixed arrays in structs (main.h):
+typedef struct mainNode { char word[20];      ... } mNode;
+typedef struct subNode  { char file_name[20]; ... } sNode;
+typedef struct Node     { char file_name[20]; ... } Flist;
+
+// After — heap-allocated pointers (main.h):
+typedef struct mainNode { char *word;      ... } mNode;  /* strdup'd */
+typedef struct subNode  { char *file_name; ... } sNode;  /* strdup'd */
+typedef struct Node     { char *file_name; ... } Flist;  /* strdup'd */
+```
+
+```c
+// Before — create_database.c (strcpy into fixed array):
+strcpy(new_mainNode->word, input_word);
+strcpy(new_subNode->file_name, temp->file_name);
+
+// After — create_database.c (strdup to heap):
+new_mainNode->word     = strdup(input_word);
+new_subNode->file_name = strdup(temp->file_name);
+```
+
+```c
+// Before — hash_t_utils.c (freeing wrong memory, only freeing mNode):
+mNode *mPrev = mTemp;
+mTemp = mTemp->mLink;
+free(mPrev->word);   // ❌ crashed — word was char[20], not heap
+free(mPrev);
+
+// After — hash_t_utils.c (free string, then node — for both sNode and mNode):
+sNode *sPrev = sTemp;
+sTemp = sTemp->subLink;
+free(sPrev->file_name); // ✅ heap string freed first
+free(sPrev);
+
+mNode *mPrev = mTemp;
+mTemp = mTemp->mLink;
+free(mPrev->word);      // ✅ heap string freed first
+free(mPrev);
+```
+
+---
+
+## ✨ Feature — Punctuation Stripping (`files_utils.c`)
+
+**Version:** v1.4  
+**File added:** `files_utils.c`
+
+A new `strip_punctuation()` function is called in `create_database.c` after every `fscanf` read. It strips all non-alpha characters except mid-word apostrophes, so `"hello,"` and `"hello"` index as the same token.
+
+```c
+// Smart apostrophe rule: keep only if surrounded by letters on both sides
+// it's  → it's   (apostrophe kept — alpha on both sides)
+// 'hi'  → hi     (apostrophe stripped — not surrounded by alpha)
+```
+
+A `continue` guard was also added to skip tokens that become empty after stripping (e.g. `"---"` → `""`), preventing empty-string entries from corrupting the index.
+
+---
+
+## ✨ Feature — Prefix Search in `search_database.c`
+
+**Version:** v1.4
+
+Search was updated from exact matching to **prefix matching** using `strncasecmp`. The entire bucket chain is now scanned (not stopped at first match), so searching `"the"` returns `"the"`, `"there"`, `"they"`, and any other word with that prefix.
+
+```c
+// Before — exact match only, stopped at first hit:
+while(mTemp && strcasecmp(mTemp->word, word) != 0)
+    mTemp = mTemp->mLink;
+
+// After — prefix match, scans full chain for all matches:
+while(mTemp != NULL)
+{
+    if(strncasecmp(mTemp->word, word, search_len) == 0)
+    {
+        // ... print all results for this match ...
+    }
+    mTemp = mTemp->mLink;
+}
+```
+
+---
+
+## ✨ Feature — Menu Input Validation in `main.c`
+
+**Version:** v1.4
+
+`scanf` now has its return value checked. If the user types letters or symbols instead of a number, the invalid input is flushed from the buffer and a clear error message is shown instead of entering an infinite loop or crashing.
+
+```c
+// Before — no validation, letters caused infinite loop:
+scanf("%d", &choice);
+
+// After — validated, invalid input is flushed and reported:
+if(scanf("%d", &choice) != 1)
+{
+    int c;
+    while((c = getchar()) != '\n' && c != EOF);
+    printf(H_RED "Invalid input! Please enter a number.\n" RESET);
+    continue;
+}
+```
+
+---
+
+## ✨ Feature — Automated Test Target in `makefile`
+
+**Version:** v1.4
+
+`make test` was added to the makefile. It generates four `.txt` test files, builds an automated input sequence covering create, display, update, search, and exit, then pipes it into the program — producing a full end-to-end run without any manual interaction.
+
+`make clean` was also updated to remove all generated test files (`test*.txt`) and `database.txt`.
 
 ---
 
 ## 🤖 Use of Claude (AI)
 
-Claude (Anthropic) was used in the following capacities during `v1.1` and `v1.2` development:
-
-| Task | Role of Claude |
-|---|---|
-| Bug identification | Reviewed source code and identified all four bugs above |
-| Root cause analysis | Explained why each bug occurred at the C language level |
-| Before/after documentation | Generated the diff-style code comparisons in this changelog |
-| README generation | Drafted the `README.md` and `PROJECT_METRICS.md` files |
-| Comment authoring | Suggested inline documentation style for source files |
+| Version | Task | Role of Claude |
+|---|---|---|
+| v1.1 | Bug identification & root cause analysis | Reviewed source, identified all 4 bugs |
+| v1.1 | Before/after documentation | Generated diff-style code comparisons |
+| v1.1–v1.4 | README, CHANGELOG, PROJECT_METRICS authoring | Drafted and maintained all `.md` files |
+| v1.3 | Optimization analysis | Identified sorted-chain, single-pass, snprintf improvements |
+| v1.4 | Segfault diagnosis | Identified `free()` on stack memory as root cause |
+| v1.4 | Punctuation stripping design | Designed smart apostrophe logic |
+| All | Core implementation | **Author** — all C code, logic, and design |
 
 All logic, data structures, algorithms, and implementation are the author's original work. Claude was used strictly as a code reviewer and documentation assistant.
 

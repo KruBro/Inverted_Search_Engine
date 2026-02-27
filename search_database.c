@@ -18,6 +18,8 @@
  * @return SUCCESS if the word was found,
  *         DATA_NOT_FOUND if the word is not in the index.
  */
+#include "main.h"
+
 Status search_database(hash_T *arr, char *word)
 {
     /* ── Compute bucket index from first character ── */
@@ -29,28 +31,39 @@ Status search_database(hash_T *arr, char *word)
     else
         index = 26;     /* Non-alphabetic token */
 
-    /* ── Traverse the mNode chain for a case-insensitive match ── */
     mNode *mTemp = arr[index].link;
-    while(mTemp && strcasecmp(mTemp->word, word) != 0)
-        mTemp = mTemp->mLink;
+    int search_len = strlen(word);
+    int found_any = 0; // Flag to track if we found at least one match
 
-    if(mTemp == NULL)
-        return DATA_NOT_FOUND;
-
-    /* ── Print per-file occurrences and accumulate total ── */
-    u_int    word_count = 0;
-    sNode   *sTemp      = mTemp->sLink;
-
-    while(sTemp)
+    /* ── Traverse the ENTIRE mNode chain looking for prefix matches ── */
+    while(mTemp != NULL)
     {
-        printf("[" H_CYAN "%s" RESET "]" CYAN ": found in %s : %d times\n" RESET,
-               word, sTemp->file_name, sTemp->wordcount);
-        word_count += sTemp->wordcount;
-        sTemp       = sTemp->subLink;
+        // Compare only up to the length of the search word
+        if(strncasecmp(mTemp->word, word, search_len) == 0)
+        {
+            found_any = 1; // We found at least one!
+            
+            u_int word_count = 0;
+            sNode *sTemp = mTemp->sLink;
+
+            // Print the full matched word
+            printf("Found match: [" H_GREEN "%s" RESET "]\n", mTemp->word);
+
+            while(sTemp)
+            {
+                printf("  -> in %s : %d times\n", sTemp->file_name, sTemp->wordcount);
+                word_count += sTemp->wordcount;
+                sTemp = sTemp->subLink;
+            }
+
+            printf("  -> Total appearances: " H_MAGENTA "%d" RESET " Times\n\n", word_count);
+        }
+        
+        mTemp = mTemp->mLink; // Keep checking the rest of the bucket!
     }
 
-    printf("[" H_CYAN "%s" RESET "]" H_YELLOW ": Word appeared" RESET
-           H_MAGENTA " %d" RESET " Times in The Database\n", word, word_count);
+    if(found_any == 0)
+        return DATA_NOT_FOUND;
 
     return SUCCESS;
 }

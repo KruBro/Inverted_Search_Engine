@@ -42,8 +42,8 @@ typedef enum
  * ───────────────────────────────────────────── */
 typedef struct Node
 {
-    char        file_name[20]; /* Name of the .txt file          */
-    struct Node *link;         /* Pointer to the next Flist node */
+    char        *file_name;    /* Heap-allocated filename (via strdup)   */
+    struct Node *link;         /* Pointer to the next Flist node         */
 } Flist;
 
 /* ─────────────────────────────────────────────
@@ -53,9 +53,9 @@ typedef struct Node
  * ───────────────────────────────────────────── */
 typedef struct subNode
 {
-    u_int           wordcount;     /* Times word appears in this file */
-    char            file_name[20]; /* The filename                    */
-    struct subNode *subLink;       /* Next file this word appears in  */
+    u_int           wordcount;  /* Times word appears in this file        */
+    char            *file_name; /* Heap-allocated filename (via strdup)   */
+    struct subNode *subLink;    /* Next file this word appears in         */
 } sNode;
 
 /* ─────────────────────────────────────────────
@@ -66,10 +66,10 @@ typedef struct subNode
  * ───────────────────────────────────────────── */
 typedef struct mainNode
 {
-    u_int           filecount;     /* Number of files this word appears in */
-    char            word[20];      /* The word itself                      */
-    sNode          *sLink;         /* Head of this word's sNode chain      */
-    struct mainNode *mLink;        /* Next word in the same hash bucket    */
+    u_int           filecount;  /* Number of files this word appears in   */
+    char            *word;      /* Heap-allocated word string (via strdup)*/
+    sNode          *sLink;      /* Head of this word's sNode chain        */
+    struct mainNode *mLink;     /* Next word in the same hash bucket      */
 } mNode;
 
 /* ─────────────────────────────────────────────
@@ -80,7 +80,7 @@ typedef struct mainNode
  * ───────────────────────────────────────────── */
 typedef struct hashT
 {
-    u_int  index; /* Bucket index (0–26)              */
+    u_int  index; /* Bucket index (0–26)               */
     mNode *link;  /* Head of this bucket's mNode chain */
 } hash_T;
 
@@ -115,7 +115,7 @@ Status update_database(hash_T *arr, Flist **head, char **fileName, u_int fileCou
 /* save_database.c */
 Status save_database(hash_T *arr);
 
-/*Remove Punctuations*/
-void strip_punctuation(char *word); 
+/* files_utils.c */
+void strip_punctuation(char *word);
 
 #endif /* MAIN_H */

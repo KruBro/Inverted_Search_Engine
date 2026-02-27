@@ -39,16 +39,20 @@ Status create_database(hash_T *arr, Flist *head)
         }
         printf(BOLD_GREEN "[Info] : %s Opened Successfully\n" RESET, temp->file_name);
 
-        char input_word[20];
+        char input_word[1024];
 
         /* ── Read the file one word at a time ── */
         while(fscanf(fp, "%s", input_word) != EOF)
         {
+            /* Strip punctuation from the token */
+            strip_punctuation(input_word);
+
+            /* Skip tokens that were pure punctuation (e.g. "---" → "") */
+            if(input_word[0] == '\0')
+                continue;
+
             /* Compute bucket index from the first character */
             int index;
-
-            strip_punctuation(input_word);
-            
             if(islower(input_word[0]))
                 index = input_word[0] - 'a';        /* a=0, b=1, ..., z=25 */
             else if(isupper(input_word[0]))
@@ -66,13 +70,13 @@ Status create_database(hash_T *arr, Flist *head)
                 if(new_subNode == NULL) { free(new_mainNode); return FAILURE; }
 
                 new_mainNode->filecount = 1;
-                strcpy(new_mainNode->word, input_word);
-                new_mainNode->sLink = new_subNode;
-                new_mainNode->mLink = NULL;
+                new_mainNode->word      = strdup(input_word);
+                new_mainNode->sLink     = new_subNode;
+                new_mainNode->mLink     = NULL;
 
-                strcpy(new_subNode->file_name, temp->file_name);
-                new_subNode->wordcount = 1;
-                new_subNode->subLink   = NULL;
+                new_subNode->file_name  = strdup(temp->file_name);
+                new_subNode->wordcount  = 1;
+                new_subNode->subLink    = NULL;
 
                 arr[index].link = new_mainNode;
             }
@@ -106,9 +110,9 @@ Status create_database(hash_T *arr, Flist *head)
                             sNode *new_subNode = malloc(sizeof(sNode));
                             if(new_subNode == NULL) return FAILURE;
 
-                            new_subNode->wordcount = 1;
-                            strcpy(new_subNode->file_name, temp->file_name);
-                            new_subNode->subLink = NULL;
+                            new_subNode->wordcount  = 1;
+                            new_subNode->file_name  = strdup(temp->file_name);
+                            new_subNode->subLink    = NULL;
 
                             sPrev->subLink = new_subNode;
                             (mTemp->filecount)++;
@@ -134,13 +138,13 @@ Status create_database(hash_T *arr, Flist *head)
                     if(new_subNode == NULL) { free(new_mainNode); return FAILURE; }
 
                     new_mainNode->filecount = 1;
-                    strcpy(new_mainNode->word, input_word);
-                    new_mainNode->sLink = new_subNode;
-                    new_mainNode->mLink = NULL;
+                    new_mainNode->word      = strdup(input_word);
+                    new_mainNode->sLink     = new_subNode;
+                    new_mainNode->mLink     = NULL;
 
-                    strcpy(new_subNode->file_name, temp->file_name);
-                    new_subNode->wordcount = 1;
-                    new_subNode->subLink   = NULL;
+                    new_subNode->file_name  = strdup(temp->file_name);
+                    new_subNode->wordcount  = 1;
+                    new_subNode->subLink    = NULL;
 
                     mPrev->mLink = new_mainNode;
                 }
