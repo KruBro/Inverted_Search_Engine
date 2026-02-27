@@ -64,33 +64,3 @@ Status read_and_validation(char *argv[], int i, Flist **head)
 
     return SUCCESS;
 }
-
-/**
- * @brief  Checks whether a filename already exists in the Flist.
- *
- * BUG FIX: The original implementation used a nested loop where the inner
- * pointer (temp1) was advanced but never used in the comparison — strcmp
- * always compared against the outer pointer (temp). This meant the final
- * node was never checked. Fixed to a single flat traversal.
- *
- * @param  head   Head of the Flist.
- * @param  fname  Filename to check.
- * @return DUPLICATE if fname is already in the list,
- *         LIST_EMPTY if the list is NULL,
- *         SUCCESS if fname is not found (no duplicate).
- */
-Status compare(Flist *head, char *fname)
-{
-    if(head == NULL)
-        return LIST_EMPTY;
-
-    Flist *temp = head;
-    while(temp)
-    {
-        if(strcmp(temp->file_name, fname) == 0)
-            return DUPLICATE;
-        temp = temp->link;
-    }
-
-    return SUCCESS;
-}

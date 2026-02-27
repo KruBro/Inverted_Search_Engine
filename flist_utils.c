@@ -1,20 +1,11 @@
-/**
- * @file   flist_utils.c
- * @brief  Utility functions for the Flist (file linked list).
- *
- * Provides insert, print, and free operations for the singly-linked
- * list of filenames that the engine has loaded.
- */
-
 #include "main.h"
 
 /**
- * @brief  Appends a filename to the end of the Flist if it is not a duplicate.
- *
- * @param  head   Pointer-to-pointer to the Flist head.
- * @param  fname  Filename string to insert.
- * @return SUCCESS if the node was inserted,
- *         FAILURE if malloc fails or a duplicate was detected.
+ * OPTIMIZATION (v1.3): Combined duplicate check and tail traversal into a
+ * single pass. Previously, compare() walked the full list, then a second
+ * loop walked it again to find the tail — two full O(F) traversals.
+ * Now both happen in one loop: duplicate check at every node, tail found
+ * naturally when temp->link == NULL.
  */
 Status insert_at_last(Flist **head, char *fname)
 {
@@ -25,34 +16,36 @@ Status insert_at_last(Flist **head, char *fname)
     strcpy(new->file_name, fname);
     new->link = NULL;
 
-    /* First node — set as head */
+    /* Empty list — new node becomes the head */
     if(*head == NULL)
     {
         *head = new;
         return SUCCESS;
     }
 
-    /* Duplicate check before traversing to the tail */
-    if(compare(*head, new->file_name) == DUPLICATE)
-    {
-        free(new);
-        return FAILURE;
-    }
-
-    /* Traverse to the tail and append */
+    /* Single pass: duplicate check AND tail find simultaneously */
     Flist *temp = *head;
     while(temp->link)
+    {
+        if(strcmp(temp->file_name, fname) == 0)
+        {
+            free(new);
+            return FAILURE;     /* Duplicate found mid-list */
+        }
         temp = temp->link;
+    }
+
+    /* Check the last node before appending */
+    if(strcmp(temp->file_name, fname) == 0)
+    {
+        free(new);
+        return FAILURE;         /* Duplicate is the tail node */
+    }
 
     temp->link = new;
     return SUCCESS;
 }
 
-/**
- * @brief  Prints all filenames in the Flist as a formatted chain.
- *
- * @param  head  Head of the Flist to print.
- */
 void print_list(Flist *head)
 {
     if(head == NULL)
@@ -73,19 +66,11 @@ void print_list(Flist *head)
     printf("\n");
 }
 
-/**
- * @brief  Frees all nodes in the Flist and sets head to NULL.
- *
- * @param  head  Pointer-to-pointer to the Flist head.
- */
 void free_list(Flist **head)
 {
     if(*head == NULL)
-    {
         printf(H_YELLOW "[Info] : List is Empty\n" RESET);
-        return;
-    }
-
+    
     while(*head)
     {
         Flist *temp = *head;

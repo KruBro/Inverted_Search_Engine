@@ -90,7 +90,6 @@ typedef struct hashT
 
 /* validation.c */
 Status read_and_validation(char *argv[], int i, Flist **head);
-Status compare(Flist *head, char *fname);
 
 /* flist_utils.c */
 Status insert_at_last(Flist **head, char *fname);
