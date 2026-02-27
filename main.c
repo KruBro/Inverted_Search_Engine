@@ -55,7 +55,19 @@ Status main(int argc, char *argv[])
         };
         for(int i = 0; i < 6; i++) { printf("%s\n", menu[i]); }
         printf(GREEN "Enter the Choice : " RESET);
-        scanf("%d", &choice);
+
+        // scanf returns the number of items successfully read. 
+        // If it returns anything other than 1, the user typed letters/symbols.
+        if (scanf("%d", &choice) != 1) 
+        {
+            // Clear the invalid input from the buffer character by character
+            // until we hit the newline (Enter key)
+            int c;
+            while ((c = getchar()) != '\n' && c != EOF);
+            
+            printf(H_RED "Invalid input! Please enter a number.\n" RESET);
+            continue; // Skip the rest of the loop and show the menu again
+        }
 
         switch(choice)
         {

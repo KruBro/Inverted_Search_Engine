@@ -30,9 +30,9 @@ void initialize_hashTable(hash_T *arr)
 /**
  * @brief  Frees all heap-allocated mNode and sNode chains in the hash table.
  *
- * Walks every bucket's mNode chain and, for each mNode, walks and frees
- * its sNode chain before freeing the mNode itself.
- * Does NOT free the hash_T array itself (it's stack-allocated in main).
+ * For each mNode: frees its sNode chain (including each sNode's file_name),
+ * then frees the mNode's word string, then frees the mNode itself.
+ * Does NOT free the hash_T array (it's stack-allocated in main).
  *
  * @param  arr  The hash table array (length 27).
  */
@@ -43,18 +43,20 @@ void free_hash_table(hash_T *arr)
         mNode *mTemp = arr[i].link;
         while(mTemp)
         {
-            /* Free all sNodes for this word first */
+            /* ── Free all sNodes for this word first ── */
             sNode *sTemp = mTemp->sLink;
             while(sTemp)
             {
                 sNode *sPrev = sTemp;
                 sTemp = sTemp->subLink;
+                free(sPrev->file_name); /* free heap-allocated filename */
                 free(sPrev);
             }
 
-            /* Then free the mNode itself */
+            /* ── Advance before freeing — then free word and node ── */
             mNode *mPrev = mTemp;
             mTemp = mTemp->mLink;
+            free(mPrev->word);          /* free heap-allocated word string */
             free(mPrev);
         }
     }

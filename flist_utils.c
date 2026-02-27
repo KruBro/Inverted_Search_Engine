@@ -13,7 +13,9 @@ Status insert_at_last(Flist **head, char *fname)
     if(new == NULL)
         return FAILURE;
 
-    strcpy(new->file_name, fname);
+    /* Heap-allocate the filename — consistent with char *file_name in struct */
+    new->file_name = strdup(fname);
+    if(new->file_name == NULL) { free(new); return FAILURE; }
     new->link = NULL;
 
     /* Empty list — new node becomes the head */
@@ -29,8 +31,9 @@ Status insert_at_last(Flist **head, char *fname)
     {
         if(strcmp(temp->file_name, fname) == 0)
         {
+            free(new->file_name);   /* free heap string before dropping the node */
             free(new);
-            return FAILURE;     /* Duplicate found mid-list */
+            return FAILURE;         /* Duplicate found mid-list */
         }
         temp = temp->link;
     }
@@ -38,8 +41,9 @@ Status insert_at_last(Flist **head, char *fname)
     /* Check the last node before appending */
     if(strcmp(temp->file_name, fname) == 0)
     {
+        free(new->file_name);
         free(new);
-        return FAILURE;         /* Duplicate is the tail node */
+        return FAILURE;             /* Duplicate is the tail node */
     }
 
     temp->link = new;
@@ -69,12 +73,16 @@ void print_list(Flist *head)
 void free_list(Flist **head)
 {
     if(*head == NULL)
+    {
         printf(H_YELLOW "[Info] : List is Empty\n" RESET);
-    
+        return;
+    }
+
     while(*head)
     {
         Flist *temp = *head;
         *head = (*head)->link;
+        free(temp->file_name);  /* free heap-allocated filename first */
         free(temp);
     }
 }

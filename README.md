@@ -25,7 +25,7 @@ This project implements an **Inverted Index** — a classic data structure used 
 - Which files each word appears in
 - How many times it appears in each file
 
-The user can then query any word and instantly see all files it was found in, along with occurrence counts.
+The user can then query any word (or prefix) and instantly see all matches found across all indexed files, along with occurrence counts.
 
 ---
 
@@ -39,59 +39,59 @@ The user can then query any word and instantly see all files it was found in, al
                          │
                     ┌────▼─────┐
                     │  mNode   │  ← Main Node (one per unique word)
-                    │  word[]  │
+                    │  *word   │
                     │filecount │
                     └──┬────┬──┘
                        │    └─────────────────────────────┐
                   mLink▼                             sLink▼
               ┌──────────┐                       ┌──────────┐
               │  mNode   │                       │  sNode   │  ← Sub Node
-              │  "word2" │                       │ file.txt │
+              │  "word2" │                       │*file_name│
               └──────────┘                       │  count   │
                                                  └────┬─────┘
                                                  subLink▼
                                                  ┌──────────┐
                                                  │  sNode   │
-                                                 │ file2.txt│
+                                                 │*file_name│
                                                  └──────────┘
 ```
 
-The hash table has **27 buckets** — one per letter of the alphabet (index by first character, case-insensitive), and one catch-all bucket (index 26) for tokens beginning with non-alphabetic characters.
+The hash table has **27 buckets** — one per letter of the alphabet (indexed by first character, case-insensitive), and one catch-all bucket (index 26) for tokens beginning with non-alphabetic characters.
 
 ---
 
 ## Data Structures
 
 ### `Flist` — File List
-A singly-linked list tracking all files that have been loaded into the system.
+A singly-linked list tracking all files that have been loaded into the system. The filename is heap-allocated via `strdup`.
 
 ```c
 typedef struct Node {
-    char file_name[20];
+    char        *file_name;   /* heap-allocated via strdup */
     struct Node *link;
 } Flist;
 ```
 
 ### `mNode` — Main Node
-One node per unique word. Stores the word itself, how many files it appears in, a pointer to the first sub-node, and a pointer to the next word in the same hash bucket.
+One node per unique word. The word string is heap-allocated via `strdup`, removing the old 19-character fixed-buffer limit.
 
 ```c
 typedef struct mainNode {
-    u_int filecount;
-    char  word[20];
-    sNode *sLink;
+    u_int            filecount;
+    char            *word;    /* heap-allocated via strdup */
+    sNode           *sLink;
     struct mainNode *mLink;
 } mNode;
 ```
 
 ### `sNode` — Sub Node
-One node per file a word appears in. Stores the filename and the count of occurrences.
+One node per file a word appears in. The filename is heap-allocated via `strdup`.
 
 ```c
 typedef struct subNode {
-    u_int wordcount;
-    char  file_name[20];
-    struct subNode *subLink;
+    u_int           wordcount;
+    char            *file_name; /* heap-allocated via strdup */
+    struct subNode  *subLink;
 } sNode;
 ```
 
@@ -115,14 +115,15 @@ inverted_search/
 ├── main.h                  # All structs, enums, and function declarations
 ├── color.h                 # ANSI color/style macros for terminal output
 ├── create_database.c       # Core indexing logic — reads files, builds the hash table
-├── search_database.c       # Word lookup across the hash table
+├── search_database.c       # Prefix-aware word lookup across the hash table
 ├── display_database.c      # Pretty-prints the entire database as a colored table
 ├── save_database.c         # Saves the database to database.txt
 ├── update_database.c       # Adds new files to an existing database (incremental)
 ├── validation.c            # File validation (extension, existence, empty, duplicate)
 ├── flist_utils.c           # Flist insert, print, free utilities
 ├── hash_t_utils.c          # Hash table init and free utilities
-└── makefile                # Build system
+├── files_utils.c           # String utilities — strip_punctuation
+└── makefile                # Build system (includes automated test target)
 ```
 
 ---
@@ -132,11 +133,16 @@ inverted_search/
 | Feature | Description |
 |---|---|
 | **Multi-file indexing** | Pass any number of `.txt` files as arguments |
+| **Prefix search** | Searching `"the"` matches `"the"`, `"there"`, `"they"`, etc. |
 | **Case-insensitive search** | `Hello` and `hello` are treated as the same word |
+| **Punctuation stripping** | `"hello,"` and `"hello"` index as the same token |
+| **Smart apostrophe handling** | `it's` is preserved; `'hello'` strips the surrounding quotes |
 | **Duplicate file detection** | The same file cannot be indexed twice |
 | **Incremental update** | Add new files without re-indexing existing ones |
 | **Colorized terminal output** | Full ANSI color support via `color.h` |
 | **Save to file** | Export the full index to `database.txt` |
+| **Input validation** | Non-numeric menu input is caught and handled gracefully |
+| **Automated testing** | `make test` runs a full end-to-end flow automatically |
 | **Non-alphabetic word support** | Tokens starting with digits or symbols go into bucket 26 |
 
 ---
@@ -157,7 +163,14 @@ make
 ./inverted_search.exe file1.txt file2.txt file3.txt
 ```
 
+### Automated Test
+Generates test `.txt` files, runs the full menu flow (create → display → update → search → exit) automatically, and prints results to the terminal:
+```bash
+make test
+```
+
 ### Clean
+Removes the binary, object files, all test `.txt` files, and `database.txt`:
 ```bash
 make clean
 ```
@@ -169,7 +182,7 @@ make clean
 ```
 1. Create Database    — Index all loaded files into the hash table
 2. Display Database   — Print the full index as a formatted, colored table
-3. Search Database    — Look up a specific word
+3. Search Database    — Prefix-aware lookup (e.g. "the" matches "there", "they")
 4. Update Database    — Add new .txt files to the existing index
 5. Save Database      — Write the index to database.txt
 6. Exit               — Save, free all memory, and quit cleanly
@@ -179,15 +192,15 @@ make clean
 
 ## Known Limitations
 
-- Word buffer is fixed at `char word[20]` — words longer than 19 characters will be silently truncated.
-- File name buffer is fixed at `char file_name[20]` — filenames longer than 19 characters will cause a buffer overflow.
-- The `compare()` function in `validation.c` contains a structural bug (see [CHANGELOG.md](CHANGELOG.md)) that was identified and documented; the duplicate detection is handled correctly via `insert_at_last`.
+- No punctuation stripping inside words containing digits — `C3PO` indexes as `CPO` since non-alpha characters are dropped entirely.
+- The hash table uses only 27 buckets (keyed on first character). Words sharing a first letter share a chain, so heavily skewed text will increase chain traversal time.
+- Prefix search scans the full bucket chain — it cannot use early-exit on sorted chains the way exact search can, since matching words may appear anywhere in the chain.
 
 ---
 
 ## Changelog & Bug Fixes
 
-See [CHANGELOG.md](CHANGELOG.md) for a full record of every bug identified, its root cause, and how it was resolved.
+See [CHANGE_LOG.md](CHANGE_LOG.md) for a full record of every bug identified, its root cause, and how it was resolved.
 
 See [PROJECT_METRICS.md](PROJECT_METRICS.md) for a quantified breakdown of the project.
 
